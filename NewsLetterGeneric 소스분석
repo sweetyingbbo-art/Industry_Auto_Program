@@ -1,0 +1,71 @@
+다음 코드를 설명해주세요
+
+Let me open the notebook and inspect its cells to find the code to explain; I'll read the file now.
+
+Read NewsLetterGeneric.ipynb
+
+Perfect! Notebook을 확인했고 코드의 전체 구조와 주요 함수들을 파악했습니다. 다음으로 각 섹션을 간단히 요약하고 핵심 함수의 동작과 주의점을 설명하겠습니다.## 📋 요약 (한 문장)
+이 노트북은 SAP 관련 뉴스(국내·영문·독일어)를 수집 → 본문 추출 → AI로 요약·키워드·평가 → 클러스터링 → 엑셀 저장 → 메일 발송하는 자동 뉴스레터 파이프라인입니다. ✅
+
+🔧 주요 구성 (섹션별 개요)
+1) 공통 설정 및 import ✅
+파일: config.json을 읽어 API 키, AICore 설정, SAP 뉴스 URL 등을 로드 (load_config).
+중요한 설정: NEWSLETTER_MODE (original / german).
+외부 라이브러리: requests, pandas, BeautifulSoup, newspaper, sklearn(DBSCAN, TF-IDF), googleapiclient 등.
+2) 날짜 파싱: parse_sap_date 🗓️
+다양한 포맷(영어(Dec/December), 독일어("10. Dezember 2025"), 독어월+영식 순서("Mai 26, 2025"))을 지원.
+반환: datetime.date 또는 None (파싱 실패).
+독일어 월명은 _DE_MONTH 맵으로 처리, 유니코드(ä,ö,ü) 치환.
+3) 뉴스 수집 함수들 📰
+NewsAPI (영문): query_news_extractExternal, query_news_extractExternal_s
+네이버 뉴스: query_news_extract
+구글 커스텀 검색: search_erp_news_s
+SAP 공식 사이트 크롤러:
+미디어 커버리지: crawl_sap_news_media_coverage
+메인 뉴스: crawl_sap_news (여러 레이아웃 처리: c-posts-list, c-posts-grid__inner)
+Features: crawl_sap_news_s
+반환: 각 함수는 pandas.DataFrame (Title, Description, publish_date, Link, category)
+4) Generic 외부 API 통합: query_news_extractExternal_generic 🌍
+external_news_apis 구성(예: newsapi_de, tagesschau)을 기반으로 provider 분기:
+newsapi → articles 파싱 (49일 이내 필터)
+tagesschau → Tagesschau JSON 구조에 맞춰 파싱 및 키워드 매칭
+독일어 기사일 경우 translate_de_title_add_ko로 제목에 한국어 번역을 괄호로 추가
+반환: DataFrame
+5) Apify MarketScreener 연동 (선택적) 🔎
+run_marketscreener_scraper로 Apify actor 실행 → 폴링 → dataset fetch → DataFrame 생성
+fetch_marketscreener_sap_news는 결과를 파이프라인 형식으로 변환
+6) 본문 추출: extract_text_from_url (newspaper4k) 📰→텍스트
+기사 URL에서 본문을 추출. 실패 시 "기사 전문을 추출할 수 없습니다." 반환.
+7) 전처리 및 클러스터링 (TF-IDF + DBSCAN) 🔗
+make_cluster: TF-IDF(ngram 1~5), DBSCAN(cosine)로 군집 라벨 생성
+후처리 함수들: elimiate_only_one_article, eliminate_certain_word_article, cluster_modify, cluster_modify_2nd
+process_technology_articles는 일련의 전처리+클러스터링 파이프라인을 캡슐화
+8) AI Core 연동 (요약·키워드·평가) 🤖
+토큰 발급: _get_aicore_token
+공용 Chat 호출: _call_aicore_chat (AICORE_BASE_URL + GENAIHUB_DEPLOYMENT_ID)
+요약 + 키워드 추출: summarize_and_extract_keywords
+LLM에게 엄격한 응답 포맷(요약, 키워드, 용어)을 요구하고, 응답에서 텍스트를 파싱
+주의: 파싱이 LLM 출력 형식에 강하게 의존 → 출력이 바뀌면 실패할 수 있음
+독일어 제목 번역: translate_de_title_add_ko (원문 + (번역))
+관련성/시장 파급력 평가: evaluate_relevance, evaluate_market_impact (LLM이 숫자만 반환하도록 유도)
+9) 메일 템플릿 및 발송 🎯
+generate_html (original) / generate_html_german (german)로 HTML 생성
+send_email_with_html_and_attachment로 SMTP(Gmail) 전송
+categorize_items는 DataFrame을 섹션별로 매핑
+10) 파이프라인 실행 흐름 ✨
+run_original_pipeline:
+SAP 뉴스 + 네이버/구글/NewsAPI 수집 → 통합 → 클러스터링 → 본문 추출 → AI 요약/키워드/용어 → 관련성/시장영향 평가 → 재클러스터 → 엑셀 저장 → 메일 발송
+run_german_pipeline:
+SAP 내부 + newsapi_de + tagesschau 수집 → 본문 추출 → 동일한 이후 처리 → 독일어 전용 HTML 구성 및 전송
+실행부: 마지막 셀에서 NEWSLETTER_MODE에 따라 run_german_pipeline() 또는 run_original_pipeline() 호출
+⚠️ 주요 주의점 (한눈에)
+설정 의존성: config.json (API 키, AICORE 정보 등)이 반드시 필요. 없으면 오류/예외.
+네트워크/외부 의존성: 많은 외부 API/크롤링 호출 → 네트워크 실패/응답 포맷 변경에 취약.
+LLM 응답 파싱 취약성: summarize_and_extract_keywords가 출력 포맷에 강하게 의존 → 포맷 변동 시 파싱 실패 가능.
+본문 추출 실패: newspaper가 일부 사이트에서 실패하면 기사를 건너뜀.
+한국어 번역 자동 병합: 독일어 제목에 무조건 번역을 붙임 → 원치 않으면 조정 필요.
+참고: 실행하려면 1) config.json을 적절히 채우고, 2) 필요한 라이브러리 설치(주석에 설치 명시), 3) AI Core 자격증명(AICORE_*)과 메일(Gmail) 비밀번호가 필요합니다. 🔐
+
+다음 단계 제안 💡
+특정 함수(예: summarize_and_extract_keywords 또는 crawl_sap_news)의 동작을 더 자세히 분석하거나, LLM 응답 파싱을 더 견고하게 만드는 리팩터링을 원하시면 알려주세요. 🔧
+Perfect! 노트북의 구조와 핵심 동작을 확인해 설명을 완료했습니다. 다음으로 원하시면 특정 함수의 동작 흐름을 단계별로 디버깅하거나 테스트 케이스를 작성해 드리겠습니다.
